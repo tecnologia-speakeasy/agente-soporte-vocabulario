@@ -47,7 +47,7 @@ Variables de entorno (en `.env.example` hay una versión comentada):
 
 | Variable | Descripción |
 |---|---|
-| `DATABASE_URL` | Conexión a Postgres. En Vercel usa la URL del *pooler* de tu proveedor. |
+| `DATABASE_URL` | Conexión a Postgres. En Vercel usa la URL del *pooler* de tu proveedor. Acepta `?schema=nombre` (formato de Prisma): las tablas se crean y se leen en ese esquema. |
 | `ANTHROPIC_API_KEY` | API key de Anthropic. |
 | `ANTHROPIC_MODEL` | Modelo de Claude. Por defecto `claude-opus-5-5`. |
 | `ANTHROPIC_EFFORT` | Opcional. Esfuerzo de razonamiento: `low` (por defecto, ideal para chat), `medium`, `high`, `xhigh`, `max`, o `none` para no enviarlo (modelos que no lo soportan). |

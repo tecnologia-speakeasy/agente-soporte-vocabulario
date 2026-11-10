@@ -8,6 +8,7 @@ import { loadEnvConfig } from "@next/env";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import postgres from "postgres";
+import { prepararConexion } from "../lib/db";
 
 loadEnvConfig(process.cwd());
 
@@ -17,10 +18,22 @@ if (!url || url.trim() === "") {
   process.exit(1);
 }
 
-const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
+// Quita parámetros de Prisma como ?schema=... (Postgres no los reconoce) y usa schema como search_path.
+const { url: urlLimpia, esquema } = prepararConexion(url);
+const sql = postgres(urlLimpia, {
+  max: 1,
+  prepare: false,
+  onnotice: () => {},
+  ...(esquema ? { connection: { search_path: esquema } } : {}),
+});
 const raiz = process.cwd();
 
 async function migrar() {
+  if (esquema) {
+    console.log(`Esquema: ${esquema}`);
+    // El nombre ya se validó en prepararConexion (solo letras, números y _).
+    if (esquema !== "public") await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS "${esquema}"`);
+  }
   await sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       nombre       TEXT PRIMARY KEY,
