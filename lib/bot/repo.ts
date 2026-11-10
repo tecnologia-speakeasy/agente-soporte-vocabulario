@@ -232,6 +232,20 @@ export async function cambiarEstadoSesion(
   `;
 }
 
+/**
+ * Suma una verificación de correo a la sesión si no se ha llegado al máximo.
+ * Devuelve false si ya se alcanzó el límite (en ese caso no suma).
+ */
+export async function registrarVerificacionCorreo(sesionId: number, maximo: number): Promise<boolean> {
+  const sql = getSql();
+  const filas = await sql`
+    UPDATE sesiones SET verificaciones_correo = verificaciones_correo + 1
+    WHERE id = ${sesionId} AND verificaciones_correo < ${maximo}
+    RETURNING id
+  `;
+  return filas.length > 0;
+}
+
 export async function registrarEscalado(datos: {
   contactId: string;
   sesionId: number;

@@ -1,12 +1,40 @@
 import type { BloqueSistema, MensajeClaude } from "../claude";
 import { SYSTEM_PROMPT } from "../prompts/system";
 import { conocimientoActivo, historialSesion, obtenerContacto, type EntradaConocimiento } from "./repo";
+import { catalogoVocabularios, type VocabularioCatalogo } from "./vocabulario";
 
 function formatearConocimiento(entradas: EntradaConocimiento[]): string {
   if (entradas.length === 0) {
     return "Todavía no hay información cargada. Escala cualquier consulta a una persona.";
   }
   return entradas.map((e) => `## [${e.categoria}] ${e.titulo}\n${e.contenido.trim()}`).join("\n\n");
+}
+
+function formatearCatalogo(catalogo: VocabularioCatalogo[] | null): string {
+  if (!catalogo || catalogo.length === 0) {
+    return "El catálogo no está disponible en este momento: no afirmes si una profesión existe o no.";
+  }
+  const porCategoria = new Map<string, string[]>();
+  for (const v of catalogo) {
+    const nombres = porCategoria.get(v.categoria) ?? [];
+    nombres.push(v.tienePdf ? v.nombre : `${v.nombre} (PDF en preparación)`);
+    porCategoria.set(v.categoria, nombres);
+  }
+  const lineas = [...porCategoria].map(([categoria, nombres]) => `- ${categoria}: ${nombres.join(", ")}`);
+  return (
+    "Vocabularios que existen hoy, por categoría. Los marcados \"(PDF en preparación)\" existen, " +
+    "pero su PDF todavía no está listo.\n" +
+    lineas.join("\n")
+  );
+}
+
+async function catalogoSeguro(): Promise<VocabularioCatalogo[] | null> {
+  try {
+    return await catalogoVocabularios();
+  } catch (error) {
+    console.error("[contexto] No se pudo leer el catálogo de vocabularios:", error);
+    return null;
+  }
 }
 
 function formatearContacto(contacto: Awaited<ReturnType<typeof obtenerContacto>>): string {
@@ -24,7 +52,7 @@ function formatearContacto(contacto: Awaited<ReturnType<typeof obtenerContacto>>
 
 /**
  * Arma el contexto para Claude:
- * - system[0]: prompt + base de conocimiento (estable → se cachea);
+ * - system[0]: prompt + base de conocimiento + catálogo de vocabularios (estable → se cachea);
  * - system[1]: datos del contacto (cambia por usuario → va después del punto de caché);
  * - messages: últimos HISTORY_LIMIT mensajes de la sesión.
  *
@@ -35,8 +63,9 @@ export async function construirContexto(params: {
   sesionId: number;
   historyLimit: number;
 }): Promise<{ system: BloqueSistema[]; messages: MensajeClaude[] } | null> {
-  const [conocimiento, contacto, historial] = await Promise.all([
+  const [conocimiento, catalogo, contacto, historial] = await Promise.all([
     conocimientoActivo(),
+    catalogoSeguro(),
     obtenerContacto(params.contactId),
     historialSesion(params.sesionId, params.historyLimit),
   ]);
@@ -58,7 +87,9 @@ export async function construirContexto(params: {
   const system: BloqueSistema[] = [
     {
       type: "text",
-      text: `${SYSTEM_PROMPT}\n\n# Base de conocimiento\n${formatearConocimiento(conocimiento)}`,
+      text:
+        `${SYSTEM_PROMPT}\n\n# Base de conocimiento\n${formatearConocimiento(conocimiento)}` +
+        `\n\n# Catálogo de vocabularios\n${formatearCatalogo(catalogo)}`,
       cache_control: { type: "ephemeral" },
     },
     { type: "text", text: formatearContacto(contacto) },

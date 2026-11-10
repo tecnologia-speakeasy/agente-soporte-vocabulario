@@ -1,4 +1,5 @@
 import { exigirAdmin } from "@/lib/auth";
+import { resumenVocabulario } from "@/lib/bot/vocabulario";
 import { getSql } from "@/lib/db";
 import { revisarEnv } from "@/lib/env";
 import { marcadoresPendientes } from "@/lib/prompts/system";
@@ -26,11 +27,24 @@ export async function GET(request: Request) {
     db.error = error instanceof Error ? error.message : String(error);
   }
 
-  const ok = env.ok && db.ok && (db.migraciones?.length ?? 0) > 0;
+  // Esquema "vocabulario" (correos autorizados, profesiones, catálogo): solo lectura.
+  let vocabulario: { ok: boolean; error?: string } & Partial<Awaited<ReturnType<typeof resumenVocabulario>>> = {
+    ok: false,
+  };
+  if (db.ok) {
+    try {
+      vocabulario = { ok: true, ...(await resumenVocabulario()) };
+    } catch (error) {
+      vocabulario.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const ok = env.ok && db.ok && (db.migraciones?.length ?? 0) > 0 && vocabulario.ok;
   return Response.json(
     {
       ok,
       db,
+      vocabulario,
       env,
       modelo: process.env.ANTHROPIC_MODEL || "claude-opus-5-5",
       prompt_marcadores_pendientes: marcadoresPendientes(),

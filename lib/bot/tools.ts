@@ -8,7 +8,9 @@ import {
   guardarMensaje,
   obtenerContacto,
   registrarEscalado,
+  registrarVerificacionCorreo,
 } from "./repo";
+import { correoValido, normalizarCorreo, verificarAcceso } from "./vocabulario";
 
 /** Definición de las herramientas (orden fijo: forma parte del prefijo cacheado). */
 export const HERRAMIENTAS: HerramientaClaude[] = [
@@ -25,7 +27,8 @@ export const HERRAMIENTAS: HerramientaClaude[] = [
       properties: {
         motivo: {
           type: "string",
-          description: "Etiqueta corta del motivo, ej. pago, reembolso, acceso_no_resuelto, solicita_persona, molestia, fuera_de_alcance.",
+          description:
+            "Etiqueta corta del motivo, ej. correo_no_autorizado, acceso_plataforma, pago, reembolso, solicita_persona, molestia, fuera_de_alcance.",
         },
         resumen: {
           type: "string",
@@ -67,11 +70,32 @@ export const HERRAMIENTAS: HerramientaClaude[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "verificar_acceso_vocabulario",
+    description:
+      "Consulta, con el correo de compra, si el usuario tiene acceso al vocabulario (lista de correos autorizados) y, " +
+      "si lo tiene, qué profesión eligió y si su vocabulario está \"lista\" o \"en_preparacion\". Devuelve " +
+      "profesiones_elegidas vacío si todavía no eligió profesión. Úsala solo con el correo que el usuario dice que es " +
+      "suyo. Hay un límite de consultas por conversación.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      properties: {
+        correo: { type: "string", description: "Correo con el que el usuario compró, tal como lo escribió." },
+      },
+      required: ["correo"],
+      additionalProperties: false,
+    },
+  },
 ];
+
+/** Máximo de correos que se pueden verificar por sesión. */
+export const MAX_VERIFICACIONES_CORREO = 3;
 
 const EntradaEscalar = z.object({ motivo: z.string().trim().min(1).max(200), resumen: z.string().trim().min(1).max(4000) });
 const EntradaGuardar = z.object({ clave: z.string().trim().min(1).max(60), valor: z.string().trim().min(1).max(1000) });
 const EntradaCerrar = z.object({ resumen: z.string().trim().min(1).max(2000) });
+const EntradaVerificar = z.object({ correo: z.string().trim().min(3).max(254) });
 
 const CLAVES_SENSIBLES = /contrase|password|passwd|clave_acceso|pin\b|tarjeta|card|cvv|cvc|codigo_verificacion|otp/i;
 
@@ -193,6 +217,26 @@ export async function ejecutarHerramienta(
         await cambiarEstadoSesion(ctx.sesionId, "cerrada", datos.resumen);
         ctx.estado.cerrado = true;
         return { contenido: "Caso cerrado. Despídete brevemente del usuario.", esError: false };
+      }
+      case "verificar_acceso_vocabulario": {
+        const correo = normalizarCorreo(EntradaVerificar.parse(entrada).correo);
+        if (!correoValido(correo)) {
+          return {
+            contenido: "Ese correo no parece válido. Pídele al usuario que lo revise y lo escriba completo.",
+            esError: true,
+          };
+        }
+        if (!(await registrarVerificacionCorreo(ctx.sesionId, MAX_VERIFICACIONES_CORREO))) {
+          return {
+            contenido:
+              `Se alcanzó el límite de ${MAX_VERIFICACIONES_CORREO} correos verificados en esta conversación. ` +
+              "No verifiques más correos: si el caso no se resolvió, escala a una persona.",
+            esError: true,
+          };
+        }
+        const resultado = await verificarAcceso(correo);
+        if (resultado.autorizado) await guardarDatoMemoria(ctx.contactId, "correo_compra", resultado.correo);
+        return { contenido: JSON.stringify(resultado), esError: false };
       }
       default:
         return { contenido: `Herramienta desconocida: ${nombre}`, esError: true };
