@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
   let logId: number | null = null;
   try {
-    logId = await registrarWebhook({ _origen: "test-chat", ...cuerpo });
+    logId = await registrarWebhook({ _origen: "test-chat", ...cuerpo }, true);
     const r = await procesarMensaje(
       {
         contactId: cuerpo.contact_id,
@@ -62,9 +62,9 @@ export async function POST(request: Request) {
         telefono: cuerpo.telefono ?? null,
         tags: null,
       },
-      { ghl, debounce: cuerpo.debounce, modoPrueba: true, tagsSimuladas: cuerpo.simulate_tags ?? null },
+      { ghl, debounce: cuerpo.debounce, modoPrueba: true, tagsSimuladas: cuerpo.simulate_tags ?? null, logId },
     );
-    await cerrarWebhookLog(logId, r.resultado, r.detalle);
+    await cerrarWebhookLog(logId, r.resultado, r.detalle, cuerpo.contact_id);
 
     const ignorado = r.resultado.startsWith("ignorado") || r.resultado === "duplicado" || r.resultado === "debounce";
     return Response.json({
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const detalle = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error("[test-chat] Error:", error);
-    if (logId !== null) await cerrarWebhookLog(logId, "error", detalle).catch(() => {});
+    if (logId !== null) await cerrarWebhookLog(logId, "error", detalle, cuerpo.contact_id).catch(() => {});
     return Response.json({ ok: false, resultado: "error", error: detalle }, { status: 500 });
   }
 }

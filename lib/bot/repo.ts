@@ -43,21 +43,83 @@ export interface Contacto {
 }
 
 // ---------- webhook_logs ----------
+// Nota: los valores JSON se envían como texto y se convierten con ::text::jsonb. Con `${texto}::jsonb`
+// el paquete postgres vuelve a serializar el texto y la columna queda con un string JSON en vez del objeto.
 
-export async function registrarWebhook(payload: unknown): Promise<number> {
+export async function registrarWebhook(payload: unknown, esPrueba = false): Promise<number> {
   const sql = getSql();
   const [fila] = await sql<{ id: number }[]>`
-    INSERT INTO webhook_logs (payload) VALUES (${JSON.stringify(payload ?? null)}::jsonb)
+    INSERT INTO webhook_logs (payload, es_prueba)
+    VALUES (${JSON.stringify(payload ?? null)}::text::jsonb, ${esPrueba})
     RETURNING id
   `;
   return fila.id;
 }
 
-export async function cerrarWebhookLog(id: number, resultado: Resultado, detalle: string | null): Promise<void> {
+/** Asocia el webhook con su contacto y conversación (para ir del log a la conversación en el panel). */
+export async function vincularWebhookLog(id: number, contactId: string, sesionId: number | null): Promise<void> {
   const sql = getSql();
   await sql`
-    UPDATE webhook_logs SET resultado = ${resultado}, detalle = ${detalle?.slice(0, 4000) ?? null}
+    UPDATE webhook_logs SET contact_id = ${contactId}, sesion_id = COALESCE(${sesionId}, sesion_id)
     WHERE id = ${id}
+  `;
+}
+
+export async function cerrarWebhookLog(
+  id: number,
+  resultado: Resultado,
+  detalle: string | null,
+  contactId: string | null = null,
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    UPDATE webhook_logs
+    SET resultado = ${resultado},
+        detalle = ${detalle?.slice(0, 4000) ?? null},
+        contact_id = COALESCE(${contactId}, contact_id),
+        terminado_en = now()
+    WHERE id = ${id}
+  `;
+}
+
+// ---------- turnos_bot (monitoreo) ----------
+
+export interface DatosTurno {
+  contactId: string;
+  sesionId: number | null;
+  webhookLogId: number | null;
+  esPrueba: boolean;
+  resultado: string;
+  detalle: string | null;
+  error: string | null;
+  modelo: string | null;
+  stopReason: string | null;
+  llamadas: number;
+  tokensEntrada: number;
+  tokensCacheLectura: number;
+  tokensCacheEscritura: number;
+  tokensSalida: number;
+  costoUsd: number | null;
+  duracionMs: number;
+  herramientas: unknown[];
+  avisos: string[];
+  iniciadoEn: Date;
+}
+
+export async function registrarTurno(t: DatosTurno): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO turnos_bot (
+      contact_id, sesion_id, webhook_log_id, es_prueba, resultado, detalle, error, modelo, stop_reason,
+      llamadas, tokens_entrada, tokens_cache_lectura, tokens_cache_escritura, tokens_salida,
+      costo_usd, duracion_ms, herramientas, avisos, iniciado_en
+    ) VALUES (
+      ${t.contactId}, ${t.sesionId}, ${t.webhookLogId}, ${t.esPrueba}, ${t.resultado},
+      ${t.detalle?.slice(0, 4000) ?? null}, ${t.error?.slice(0, 4000) ?? null}, ${t.modelo}, ${t.stopReason},
+      ${t.llamadas}, ${t.tokensEntrada}, ${t.tokensCacheLectura}, ${t.tokensCacheEscritura}, ${t.tokensSalida},
+      ${t.costoUsd}, ${Math.round(t.duracionMs)}, ${JSON.stringify(t.herramientas)}::text::jsonb,
+      ${JSON.stringify(t.avisos)}::text::jsonb, ${t.iniciadoEn}
+    )
   `;
 }
 
@@ -212,6 +274,12 @@ export async function estadoSesion(sesionId: number): Promise<EstadoSesion | nul
   const sql = getSql();
   const [fila] = await sql<{ estado: EstadoSesion }[]>`SELECT estado FROM sesiones WHERE id = ${sesionId}`;
   return fila?.estado ?? null;
+}
+
+/** Marca la sesión como conversación de prueba (/api/test-chat). */
+export async function marcarSesionPrueba(sesionId: number): Promise<void> {
+  const sql = getSql();
+  await sql`UPDATE sesiones SET es_prueba = TRUE WHERE id = ${sesionId} AND NOT es_prueba`;
 }
 
 export async function tocarSesion(sesionId: number): Promise<void> {

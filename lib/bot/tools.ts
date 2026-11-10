@@ -107,6 +107,8 @@ export interface ContextoHerramientas {
   /** Mensajes que se enviaron al usuario durante el turno. */
   mensajesEnviados: string[];
   estado: { escalado: boolean; cerrado: boolean };
+  /** Problemas que no detienen el turno (se guardan en turnos_bot y se ven en el panel). */
+  avisos: string[];
 }
 
 export interface UsoHerramienta {
@@ -137,6 +139,7 @@ export async function escalarAHumano(
       const detalle = error instanceof Error ? error.message : String(error);
       console.error(`[escalado] Falló "${paso}" para ${ctx.contactId}: ${detalle}`);
       errores.push(`${paso}: ${detalle}`);
+      ctx.avisos.push(`Al escalar falló "${paso}": ${detalle}`);
     }
   };
 
@@ -246,6 +249,7 @@ export async function ejecutarHerramienta(
       return { contenido: `Entrada inválida: ${error.issues.map((i) => i.message).join("; ")}`, esError: true };
     }
     console.error(`[herramientas] Error ejecutando ${nombre}:`, error);
+    ctx.avisos.push(`Error en la herramienta ${nombre}: ${error instanceof Error ? error.message : String(error)}`);
     return { contenido: "Error interno al ejecutar la herramienta.", esError: true };
   }
 }

@@ -1,26 +1,123 @@
 @import "tailwindcss";
 
+/*
+ * Colores del panel. Marca Speak Easy: morado #41276B y fucsia #FF327D.
+ * Datos: paleta neutra validada para daltonismo (respondido / escalado / error), con su propia versión oscura.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
+  --se-morado: #41276b;
+  --se-morado-hover: #563487;
+  --se-fucsia: #ff327d;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --plano: #f6f5f2;
+  --superficie: #fcfcfb;
+  --superficie-2: #f0efec;
+  --tinta: #0b0b0b;
+  --tinta-2: #52514e;
+  --tinta-3: #6f6d68;
+  --linea: #e1e0d9;
+  --eje: #c3c2b7;
+  --borde: rgba(11, 11, 11, 0.1);
+
+  --serie-1: #2a78d6;
+  --serie-respondido: #2a78d6;
+  --serie-escalado: #eda100;
+  --serie-error: #d03b3b;
+
+  --exito: #006300;
+  --exito-fondo: #e6f2e6;
+  --aviso: #8a5a00;
+  --aviso-fondo: #fdf3dc;
+  --critico: #b42323;
+  --critico-fondo: #fbe9e9;
+  --info: #1c5cab;
+  --info-fondo: #e7f0fb;
+
+  --burbuja-usuario: #ffffff;
+  --burbuja-bot: #ede7f6;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+    --se-morado-hover: #5a3a8f;
+    --plano: #0d0d0d;
+    --superficie: #1a1a19;
+    --superficie-2: #242422;
+    --tinta: #f0efec;
+    --tinta-2: #c3c2b7;
+    --tinta-3: #a3a29b;
+    --linea: #2c2c2a;
+    --eje: #383835;
+    --borde: rgba(255, 255, 255, 0.1);
+
+    --serie-1: #3987e5;
+    --serie-respondido: #3987e5;
+    --serie-escalado: #c98500;
+    --serie-error: #d03b3b;
+
+    --exito: #3fbf3f;
+    --exito-fondo: #12260f;
+    --aviso: #f0b440;
+    --aviso-fondo: #2b2310;
+    --critico: #f07b7b;
+    --critico-fondo: #2e1414;
+    --info: #86b6ef;
+    --info-fondo: #13233a;
+
+    --burbuja-usuario: #242422;
+    --burbuja-bot: #2a2140;
   }
 }
 
+@theme inline {
+  --font-sans: var(--font-montserrat), Arial, Helvetica, sans-serif;
+  --color-morado: var(--se-morado);
+  --color-morado-hover: var(--se-morado-hover);
+  --color-fucsia: var(--se-fucsia);
+  --color-plano: var(--plano);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-tinta: var(--tinta);
+  --color-tinta-2: var(--tinta-2);
+  --color-tinta-3: var(--tinta-3);
+  --color-linea: var(--linea);
+  --color-borde: var(--borde);
+  --color-exito: var(--exito);
+  --color-exito-fondo: var(--exito-fondo);
+  --color-aviso: var(--aviso);
+  --color-aviso-fondo: var(--aviso-fondo);
+  --color-critico: var(--critico);
+  --color-critico-fondo: var(--critico-fondo);
+  --color-info: var(--info);
+  --color-info-fondo: var(--info-fondo);
+  --color-burbuja-usuario: var(--burbuja-usuario);
+  --color-burbuja-bot: var(--burbuja-bot);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--plano);
+  color: var(--tinta);
+}
+
+:focus-visible {
+  outline: 2px solid var(--se-fucsia);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Gráfica diaria: resalta la columna bajo el cursor. */
+.columna-dia .fondo-columna {
+  fill: transparent;
+}
+.columna-dia:hover .fondo-columna,
+.columna-dia:focus .fondo-columna {
+  fill: var(--superficie-2);
+}
+.columna-dia:focus {
+  outline: none;
 }

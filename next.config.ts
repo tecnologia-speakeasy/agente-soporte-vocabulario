@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   },
   cacheComponents: true,
   partialPrefetching: true,
+  // La raíz no tiene página propia: lleva al panel de monitoreo.
+  async redirects() {
+    return [{ source: "/", destination: "/admin", permanent: false }];
+  },
   turbopack: {
     rules: {
       "*.css": {

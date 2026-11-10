@@ -26,6 +26,20 @@ WhatsApp → GHL (flujo "BOT VOCABULARIO") → POST /api/webhook/ghl → 200 inm
    - `guardar_dato_contacto`: guarda datos del caso en `contactos.memoria` (profesión, problema...).
    - `cerrar_caso`: marca la sesión como `cerrada` y el bot queda inactivo hasta un nuevo disparador.
 8. **Errores**: se registran en `webhook_logs` y en los logs de Vercel. El usuario nunca recibe mensajes de error técnicos. Si Claude rechaza responder o no termina en 6 pasos, el caso se escala automáticamente.
+9. **Monitoreo**: cada respuesta queda en `turnos_bot` (herramientas usadas y su resultado, tokens, costo estimado, tiempo, errores y avisos) y se ve en el [panel `/admin`](#panel-de-monitoreo-admin).
+
+## Panel de monitoreo (`/admin`)
+
+Panel web protegido con contraseña (`PANEL_PASSWORD`, o `ADMIN_TOKEN` si no está). La raíz del sitio (`/`) lleva al panel.
+
+- **Resumen**: conversaciones, mensajes atendidos, errores, costo estimado y tiempo de respuesta de los últimos 7, 30 o 90 días; gráfica diaria (respondidos, escalados, errores); cómo terminan las conversaciones; motivos de escalado; uso de herramientas (incluye correos autorizados y no autorizados); consumo de tokens y caché; últimos problemas. También avisa si falta configuración (por ejemplo `ANTHROPIC_API_KEY`) y cuándo llegó el último mensaje de GHL.
+- **Conversaciones**: búsqueda por nombre, teléfono o correo guardado; filtros por estado, revisión, conversaciones largas (6+ mensajes del usuario) y con errores. Al abrir una se ve el chat completo con lo que hizo el bot en cada respuesta (herramientas con su entrada y resultado, costo, tiempo, errores y avisos), los datos que guardó del contacto y el resumen de cierre o escalado.
+- **Revisión manual**: en cada conversación se puede marcar "respondió bien" o "respondió mal" con una nota. El resumen muestra cuántas van bien, mal y sin revisar: es la forma de medir la calidad de las respuestas.
+- **Errores**: errores al procesar un mensaje (el usuario no recibió respuesta), procesos que no terminaron (p. ej. la función llegó a su tiempo límite) y avisos (p. ej. falló poner la etiqueta `requiere_humano` en GHL al escalar), con enlace a la conversación.
+
+Las conversaciones de `/api/test-chat` se marcan como prueba y no se cuentan, salvo con el filtro "Incluir pruebas". El costo es una estimación con la tabla de precios de [lib/precios.ts](lib/precios.ts) (actualízala si cambias de modelo o cambian los precios); la factura real está en la consola de Anthropic. Las fechas se muestran en hora de Colombia (`PANEL_ZONA_HORARIA` para cambiarla).
+
+La sesión del panel es una cookie firmada que dura 7 días; cambiar la contraseña cierra todas las sesiones.
 
 ## Datos del programa (esquema `vocabulario`)
 
@@ -79,6 +93,8 @@ Variables de entorno (en `.env.example` hay una versión comentada):
 | `DEBOUNCE_SECONDS` | Espera para agrupar mensajes (por defecto 8). |
 | `HISTORY_LIMIT` | Mensajes de historial que ve Claude (por defecto 20). |
 | `ADMIN_TOKEN` | Token para `/api/health` y `/api/test-chat` (mínimo 16 caracteres). |
+| `PANEL_PASSWORD` | Contraseña del panel `/admin` (mínimo 10 caracteres). Si está vacía, se usa `ADMIN_TOKEN`. |
+| `PANEL_ZONA_HORARIA` | Opcional. Zona horaria de las fechas del panel (por defecto `America/Bogota`). |
 | `DATABASE_POOL_MAX` | Opcional. Conexiones máximas por instancia (por defecto 5). |
 
 Las variables se validan con zod al arrancar el servidor (`instrumentation.ts`). Si falta alguna, el log lo indica con un mensaje claro y `/api/health` lo reporta.
@@ -140,8 +156,11 @@ Respuesta de ejemplo:
 
 ### Revisar qué pasó con cada webhook
 
+Lo más cómodo es el panel (`http://localhost:3000/admin`). Con SQL:
+
 ```sql
-SELECT id, created_at, resultado, detalle FROM webhook_logs ORDER BY id DESC LIMIT 20;
+SELECT id, created_at, resultado, detalle, sesion_id FROM webhook_logs ORDER BY id DESC LIMIT 20;
+SELECT id, created_at, resultado, herramientas, costo_usd, duracion_ms, error, avisos FROM turnos_bot ORDER BY id DESC LIMIT 20;
 ```
 
 ## Cargar disparadores y conocimiento
@@ -170,7 +189,7 @@ Los cambios aplican desde el siguiente mensaje, sin volver a desplegar. Las regl
    DATABASE_URL="postgres://...produccion..." npm run db:migrate
    DATABASE_URL="postgres://...produccion..." npm run db:seed   # opcional
    ```
-5. Despliega y verifica con `GET https://<dominio-vercel>/api/health` (con el `ADMIN_TOKEN`).
+5. Despliega y verifica con `GET https://<dominio-vercel>/api/health` (con el `ADMIN_TOKEN`) y entrando a `https://<dominio-vercel>/admin`.
 
 Las rutas del webhook y de pruebas tienen `maxDuration = 60` segundos, que cubre el debounce, las llamadas a Claude y las de GHL, y funciona en todos los planes. Con Fluid Compute puedes subirlo en [app/api/webhook/ghl/route.ts](app/api/webhook/ghl/route.ts).
 
@@ -224,6 +243,12 @@ Quita las etiquetas `humano` y `requiere_humano` del contacto. El bot vuelve a r
 app/api/webhook/ghl/route.ts   Webhook de GHL (200 inmediato + waitUntil)
 app/api/test-chat/route.ts     Simulador sin GHL (admin)
 app/api/health/route.ts        Estado de BD y configuración (admin)
+app/admin/login/               Login del panel
+app/admin/acciones.ts          Server Actions: login, cerrar sesión, revisión de conversaciones
+app/admin/(panel)/             Panel: resumen, conversaciones (lista y detalle) y errores
+proxy.ts                       Redirige al login si no hay sesión del panel
+lib/admin/                     Sesión (cookie firmada), consultas y formatos del panel
+lib/precios.ts                 Precios de Claude para estimar el costo
 instrumentation.ts             Valida las variables al arrancar
 lib/env.ts                     Validación de variables (zod)
 lib/db.ts                      Cliente de Postgres
@@ -240,6 +265,7 @@ lib/bot/repo.ts                Consultas SQL del esquema del bot
 lib/bot/vocabulario.ts         Lectura del esquema vocabulario (acceso, profesiones, catálogo)
 db/migrations/001_init.sql     Esquema inicial
 db/migrations/002_*.sql        Contador de correos verificados por sesión
+db/migrations/003_*.sql        Monitoreo: turnos_bot, enlace webhook ↔ conversación, revisión manual
 db/seed.sql                    Disparadores y conocimiento iniciales
 scripts/migrate.ts             npm run db:migrate / db:seed
 ```

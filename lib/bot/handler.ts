@@ -1,8 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
-import { llamarClaude, textoDeRespuesta, type MensajeClaude } from "../claude";
+import { llamarClaude, textoDeRespuesta, type MensajeClaude, type RespuestaClaude } from "../claude";
 import { getEnv } from "../env";
 import { clienteGhlReal, type ClienteGhl } from "../ghl";
+import { costoEstimado } from "../precios";
 import { resolverActivacion } from "./activation";
 import { construirContexto } from "./context";
 import { extraerDatos, tieneEtiquetaDeBloqueo, type DatosEntrantes } from "./payload";
@@ -13,8 +14,11 @@ import {
   existeMensaje,
   guardarMensaje,
   hayMensajeMasReciente,
+  marcarSesionPrueba,
+  registrarTurno,
   tocarSesion,
   upsertContacto,
+  vincularWebhookLog,
   type Resultado,
 } from "./repo";
 import {
@@ -36,6 +40,56 @@ export interface OpcionesProceso {
   modoPrueba: boolean;
   /** Etiquetas simuladas (solo /api/test-chat). */
   tagsSimuladas?: string[] | null;
+  /** Fila de webhook_logs de este mensaje (para enlazarla con la conversación y el turno). */
+  logId?: number | null;
+}
+
+/** Tokens, costo y modelo acumulados en las llamadas a Claude de un turno. */
+interface MedicionTurno {
+  modelo: string | null;
+  stopReason: string | null;
+  llamadas: number;
+  tokensEntrada: number;
+  tokensCacheLectura: number;
+  tokensCacheEscritura: number;
+  tokensSalida: number;
+  costoUsd: number;
+  /** false si algún modelo no está en la tabla de precios (el costo queda sin estimar). */
+  costoCompleto: boolean;
+}
+
+function nuevaMedicion(): MedicionTurno {
+  return {
+    modelo: null,
+    stopReason: null,
+    llamadas: 0,
+    tokensEntrada: 0,
+    tokensCacheLectura: 0,
+    tokensCacheEscritura: 0,
+    tokensSalida: 0,
+    costoUsd: 0,
+    costoCompleto: true,
+  };
+}
+
+function acumularUso(m: MedicionTurno, respuesta: RespuestaClaude): void {
+  const u = respuesta.usage;
+  const uso = {
+    entrada: u.input_tokens,
+    cacheLectura: u.cache_read_input_tokens ?? 0,
+    cacheEscritura: u.cache_creation_input_tokens ?? 0,
+    salida: u.output_tokens,
+  };
+  m.llamadas++;
+  m.modelo = respuesta.model;
+  m.stopReason = respuesta.stop_reason ?? null;
+  m.tokensEntrada += uso.entrada;
+  m.tokensCacheLectura += uso.cacheLectura;
+  m.tokensCacheEscritura += uso.cacheEscritura;
+  m.tokensSalida += uso.salida;
+  const costo = costoEstimado(respuesta.model, uso);
+  if (costo === null) m.costoCompleto = false;
+  else m.costoUsd += costo;
 }
 
 export interface ResultadoProceso {
@@ -72,12 +126,14 @@ async function conversar(
   contexto: { system: Parameters<typeof llamarClaude>[0]["system"]; messages: MensajeClaude[] },
   ctx: ContextoHerramientas,
   herramientasUsadas: UsoHerramienta[],
+  medicion: MedicionTurno,
 ): Promise<{ texto: string | null; detalle: string | null }> {
   const messages = [...contexto.messages];
   let textoPrevio = "";
 
   for (let i = 0; i < MAX_ITERACIONES; i++) {
     const respuesta = await llamarClaude({ system: contexto.system, messages, tools: HERRAMIENTAS });
+    acumularUso(medicion, respuesta);
 
     if (respuesta.stop_reason === "refusal") {
       // Ni el modelo ni su respaldo pudieron responder: que lo atienda una persona.
@@ -177,6 +233,8 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
   const sesionId = activacion.sesion.id;
   salida.sesionId = sesionId;
   await asignarSesionAMensaje(mensajeId, sesionId);
+  if (opciones.logId != null) await vincularWebhookLog(opciones.logId, contactId, sesionId);
+  if (opciones.modoPrueba) await marcarSesionPrueba(sesionId);
 
   // 9. Debounce: si llega otro mensaje del mismo contacto, ese se encarga de responder.
   if (opciones.debounce && env.DEBOUNCE_SECONDS > 0) {
@@ -189,11 +247,6 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
     return fin("ignorado_sin_sesion", "La sesión dejó de estar activa antes de responder");
   }
 
-  // 10. Contexto.
-  const contexto = await construirContexto({ contactId, sesionId, historyLimit: env.HISTORY_LIMIT });
-  if (!contexto) return fin("debounce", "No hay mensajes nuevos del usuario para responder");
-
-  // 11. Claude + herramientas.
   const ctx: ContextoHerramientas = {
     contactId,
     sesionId,
@@ -201,54 +254,105 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
     motivoFieldId: env.GHL_MOTIVO_ESCALADO_FIELD_ID,
     mensajesEnviados: salida.mensajesEnviados,
     estado: { escalado: false, cerrado: false },
+    avisos: [],
   };
-  const { texto: textoClaude, detalle } = await conversar(contexto, ctx, salida.herramientas);
+  const medicion = nuevaMedicion();
 
-  if (ctx.estado.escalado) return fin("escalado", detalle);
+  const responder = async (): Promise<ResultadoProceso> => {
+    // 10. Contexto.
+    const contexto = await construirContexto({ contactId, sesionId, historyLimit: env.HISTORY_LIMIT });
+    if (!contexto) return fin("debounce", "No hay mensajes nuevos del usuario para responder");
 
-  const respuesta = textoClaude ? formatoWhatsApp(textoClaude) : null;
-  salida.respuesta = respuesta;
-  if (!respuesta) return fin("respondido", "Claude no devolvió texto; no se envió nada");
+    // 11. Claude + herramientas.
+    const { texto: textoClaude, detalle } = await conversar(contexto, ctx, salida.herramientas, medicion);
 
-  // Otro webhook pudo escalar la sesión mientras respondíamos.
-  const estadoActual = await estadoSesion(sesionId);
-  if (!(estadoActual === "activa" || (estadoActual === "cerrada" && ctx.estado.cerrado))) {
-    return fin("ignorado_sin_sesion", `La sesión pasó a "${estadoActual}" antes de enviar la respuesta`);
+    if (ctx.estado.escalado) return fin("escalado", detalle);
+
+    const respuesta = textoClaude ? formatoWhatsApp(textoClaude) : null;
+    salida.respuesta = respuesta;
+    if (!respuesta) return fin("respondido", "Claude no devolvió texto; no se envió nada");
+
+    // Otro webhook pudo escalar la sesión mientras respondíamos.
+    const estadoActual = await estadoSesion(sesionId);
+    if (!(estadoActual === "activa" || (estadoActual === "cerrada" && ctx.estado.cerrado))) {
+      return fin("ignorado_sin_sesion", `La sesión pasó a "${estadoActual}" antes de enviar la respuesta`);
+    }
+
+    // 12. Enviar, guardar y actualizar la sesión.
+    const { messageId } = await opciones.ghl.sendWhatsApp(contactId, respuesta);
+    salida.mensajesEnviados.push(respuesta);
+    await guardarMensaje({ contactId, sesionId, rol: "assistant", contenido: respuesta, ghlMessageId: messageId });
+    await tocarSesion(sesionId);
+
+    return fin("respondido", ctx.estado.cerrado ? "Caso cerrado por el bot" : null);
+  };
+
+  // El turno queda registrado en turnos_bot (herramientas, tokens, costo, tiempo y errores) para el panel.
+  const iniciadoEn = new Date();
+  const inicio = performance.now();
+  let errorTurno: unknown = null;
+  try {
+    return await responder();
+  } catch (error) {
+    errorTurno = error;
+    throw error;
+  } finally {
+    if (medicion.llamadas > 0 || errorTurno !== null || ctx.avisos.length > 0) {
+      await registrarTurno({
+        contactId,
+        sesionId,
+        webhookLogId: opciones.logId ?? null,
+        esPrueba: opciones.modoPrueba,
+        resultado: errorTurno !== null ? "error" : salida.resultado,
+        detalle: errorTurno !== null ? null : salida.detalle,
+        error: errorTurno !== null ? describirError(errorTurno) : null,
+        modelo: medicion.modelo,
+        stopReason: medicion.stopReason,
+        llamadas: medicion.llamadas,
+        tokensEntrada: medicion.tokensEntrada,
+        tokensCacheLectura: medicion.tokensCacheLectura,
+        tokensCacheEscritura: medicion.tokensCacheEscritura,
+        tokensSalida: medicion.tokensSalida,
+        costoUsd: medicion.costoCompleto ? medicion.costoUsd : null,
+        duracionMs: performance.now() - inicio,
+        herramientas: salida.herramientas,
+        avisos: ctx.avisos,
+        iniciadoEn,
+      }).catch((e) => console.error("[bot] No se pudo registrar el turno en turnos_bot:", e));
+    }
   }
+}
 
-  // 12. Enviar, guardar y actualizar la sesión.
-  const { messageId } = await opciones.ghl.sendWhatsApp(contactId, respuesta);
-  salida.mensajesEnviados.push(respuesta);
-  await guardarMensaje({ contactId, sesionId, rol: "assistant", contenido: respuesta, ghlMessageId: messageId });
-  await tocarSesion(sesionId);
-
-  return fin("respondido", ctx.estado.cerrado ? "Caso cerrado por el bot" : null);
+function describirError(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 
 /** Procesa un webhook de GHL ya registrado en webhook_logs (se ejecuta dentro de waitUntil). */
 export async function procesarWebhook(payload: unknown, logId: number | null): Promise<void> {
   let resultado: Resultado = "error";
   let detalle: string | null = null;
+  let contactId: string | null = null;
   try {
     const datos = extraerDatos(payload);
     if ("error" in datos) {
       detalle = datos.error;
       console.warn(`[bot] Payload inválido (log ${logId ?? "sin id"}): ${datos.error}`);
     } else {
-      const r = await procesarMensaje(datos, { ghl: clienteGhlReal, debounce: true, modoPrueba: false });
+      contactId = datos.contactId;
+      const r = await procesarMensaje(datos, { ghl: clienteGhlReal, debounce: true, modoPrueba: false, logId });
       resultado = r.resultado;
       detalle = r.detalle;
       console.log(`[bot] contacto=${datos.contactId} resultado=${resultado}${detalle ? ` detalle="${detalle}"` : ""}`);
     }
   } catch (error) {
     resultado = "error";
-    detalle = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    detalle = describirError(error);
     console.error("[bot] Error procesando webhook:", error);
   }
 
   if (logId !== null) {
     try {
-      await cerrarWebhookLog(logId, resultado, detalle);
+      await cerrarWebhookLog(logId, resultado, detalle, contactId);
     } catch (error) {
       console.error("[bot] No se pudo actualizar webhook_logs:", error);
     }
