@@ -2,8 +2,18 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { POR_PAGINA, problemas, zonaHoraria, type TipoProblema } from "@/lib/admin/datos";
 import { fechaHora, numero } from "@/lib/admin/formato";
-import { exigirSesionPanel } from "@/lib/admin/sesion";
-import { Cargando, InsigniaPrueba, Opcion, Paginacion, SinDatos, Tarjeta, conParametros, parametro } from "../ui";
+import { exigirSesionPanel, incluirPruebas } from "@/lib/admin/sesion";
+import {
+  Cargando,
+  EncabezadoPagina,
+  InsigniaPrueba,
+  Opcion,
+  Paginacion,
+  SinDatos,
+  Tarjeta,
+  conParametros,
+  parametro,
+} from "../ui";
 
 const TIPOS: { valor: TipoProblema; texto: string; singular: string; explicacion: string }[] = [
   {
@@ -35,7 +45,7 @@ const ESTILO_TIPO: Record<TipoProblema, string> = {
 export default function PaginaErrores(props: PageProps<"/admin/errores">) {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Errores</h1>
+      <EncabezadoPagina titulo="Errores" />
       <Suspense fallback={<Cargando filas={1} />}>
         <Contenido searchParams={props.searchParams} />
       </Suspense>
@@ -48,7 +58,7 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/err
   const sp = await searchParams;
   const tipoTexto = parametro(sp.tipo);
   const tipo = TIPOS.find((t) => t.valor === tipoTexto)?.valor ?? null;
-  const pruebas = parametro(sp.pruebas) === "1";
+  const pruebas = await incluirPruebas();
   const pagina = Math.max(1, Math.floor(Number(parametro(sp.pagina)) || 1));
 
   const { filas, total } = await problemas({
@@ -58,10 +68,9 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/err
     desplazamiento: (pagina - 1) * POR_PAGINA,
   });
   const zona = zonaHoraria();
-  const enlace = (cambios: { tipo?: TipoProblema | null; pruebas?: boolean; pagina?: number }) =>
+  const enlace = (cambios: { tipo?: TipoProblema | null; pagina?: number }) =>
     conParametros("/admin/errores", {
       tipo: cambios.tipo === undefined ? tipo : cambios.tipo,
-      pruebas: cambios.pruebas ?? pruebas,
       pagina: cambios.pagina && cambios.pagina > 1 ? cambios.pagina : null,
     });
 
@@ -76,10 +85,6 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/err
             {t.texto}
           </Opcion>
         ))}
-        <span className="mx-1 hidden h-5 w-px bg-linea sm:block" aria-hidden />
-        <Opcion href={enlace({ pruebas: !pruebas })} activa={pruebas}>
-          {pruebas ? "✓ Incluye pruebas" : "Incluir pruebas"}
-        </Opcion>
       </div>
 
       <details className="rounded-xl border border-borde bg-superficie px-4 py-3 text-sm">

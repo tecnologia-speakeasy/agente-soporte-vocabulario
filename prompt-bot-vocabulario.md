@@ -70,7 +70,7 @@ Incluye un seed (`npm run db:seed`) con un disparador de ejemplo de cada tipo y 
 ## Herramientas del agente (tool use)
 
 - `escalar_a_humano({ motivo, resumen })`:
-  1. Envía al usuario un mensaje de transición amable (por ejemplo, que una persona del equipo continuará la conversación por este mismo chat).
+  1. Envía al usuario un mensaje tranquilizador confirmando que ya se está revisando su caso, sin mencionar que pasa de un bot a una persona (el equipo continúa por este mismo chat).
   2. Agrega la etiqueta `requiere_humano` al contacto en GHL.
   3. Actualiza el campo personalizado `motivo_escalado` con el motivo.
   4. Crea una nota en el contacto con el resumen del caso.

@@ -29,13 +29,13 @@ FROM (VALUES
    'Proceso después de comprar:
 1. Entrar a https://busquedavocabulario.speakeasyacademia.com/ y escribir el correo con el que compró. La página verifica que el correo esté autorizado.
 2. Buscar y elegir su profesión. Si su profesión todavía no existe, puede solicitarla ahí mismo y el equipo la prepara.
-3. Después de elegir, se le envía un mensaje de confirmación por WhatsApp y se le da acceso automáticamente al programa en la plataforma de Speak Easy (https://www.speakeasyacademia.com/), donde está su vocabulario.',
+3. Después de elegir, se le envía un mensaje de confirmación por WhatsApp y se le da acceso automáticamente al programa en la Plataforma de estudiantes (https://www.speakeasyacademia.com/), donde está su vocabulario.',
    10),
   ('acceso',
    'Dónde encontrar el PDF del vocabulario',
-   'El PDF del vocabulario se consulta en la plataforma de Speak Easy:
+   'El PDF del vocabulario se consulta en la Plataforma de estudiantes:
 1. Entrar a https://www.speakeasyacademia.com/
-2. Iniciar sesión con sus credenciales (correo y contraseña).
+2. Iniciar sesión con su correo y contraseña.
 3. Entrar al curso VOCABULARIO DE PROFESIONES.
 4. Ahí encuentra el vocabulario de la profesión que eligió.',
    20),
@@ -45,11 +45,11 @@ FROM (VALUES
    30),
   ('contenido',
    'Profesión nueva o PDF en preparación',
-   'Si la profesión que eligió no existía en el catálogo, o existe pero su PDF todavía no está listo, el equipo de Speak Easy lo está preparando. Cuando esté listo se le avisará por WhatsApp y lo encontrará en el curso VOCABULARIO DE PROFESIONES de la plataforma. No hay una fecha exacta: dile que pronto estará listo.',
+   'Si la profesión que eligió no existía en el catálogo, o existe pero su PDF todavía no está listo, el equipo de Speak Easy lo está preparando. Cuando esté listo se le avisará por WhatsApp y lo encontrará en el curso VOCABULARIO DE PROFESIONES de la Plataforma de estudiantes. No hay una fecha exacta: dile que pronto estará listo.',
    40),
   ('plataforma',
-   'Problemas para entrar a la plataforma de Speak Easy',
-   'Los problemas con la plataforma de Speak Easy (https://www.speakeasyacademia.com/) los resuelve una persona del equipo: no recuerda su contraseña, no puede iniciar sesión, no le aparece el curso VOCABULARIO DE PROFESIONES o no le llegó el acceso. En esos casos escala (motivo: acceso_plataforma).',
+   'Problemas para entrar a la Plataforma de estudiantes',
+   'Los problemas para entrar a la Plataforma de estudiantes (https://www.speakeasyacademia.com/) se revisan directamente en la cuenta del estudiante: no recuerda su contraseña, no puede iniciar sesión, no le aparece el curso VOCABULARIO DE PROFESIONES o no le llegó el acceso. En esos casos no intentes resolverlo tú: escala el caso (motivo: acceso_plataforma) sin anunciarle que lo pasas a otra persona.',
    50)
 ) AS v (categoria, titulo, contenido, orden)
 WHERE NOT EXISTS (SELECT 1 FROM conocimiento c WHERE c.titulo = v.titulo);

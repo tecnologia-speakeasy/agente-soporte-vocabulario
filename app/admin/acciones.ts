@@ -4,7 +4,12 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { guardarRevisionSesion } from "@/lib/admin/datos";
 import { contrasenaCorrecta, contrasenaPanel, destinoSeguro, problemaContrasena } from "@/lib/admin/firma";
-import { abrirSesionPanel, cerrarSesionPanel, exigirSesionPanel } from "@/lib/admin/sesion";
+import {
+  abrirSesionPanel,
+  cerrarSesionPanel,
+  exigirSesionPanel,
+  guardarIncluirPruebas,
+} from "@/lib/admin/sesion";
 
 export interface EstadoLogin {
   error: string | null;
@@ -40,4 +45,10 @@ export async function guardarRevision(sesionId: number, formData: FormData): Pro
   const nota = String(formData.get("nota") ?? "").trim().slice(0, 2000) || null;
   await guardarRevisionSesion(sesionId, revision, nota);
   refresh();
+}
+
+/** Muestra u oculta las conversaciones de prueba en todo el panel (la página se vuelve a mostrar sola). */
+export async function cambiarIncluirPruebas(incluir: boolean): Promise<void> {
+  await exigirSesionPanel();
+  await guardarIncluirPruebas(incluir === true);
 }

@@ -15,7 +15,7 @@ export default function LayoutPanel({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col">
       <header className="bg-morado text-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 sm:gap-x-6">
           <Link href="/admin" className="flex items-center gap-3 py-1">
             <Image src="/marca/logo-speak-easy.webp" alt="Speak Easy" width={63} height={32} priority />
             <span className="leading-tight">
@@ -29,7 +29,7 @@ export default function LayoutPanel({ children }: { children: ReactNode }) {
           <form action={cerrarSesion} className="ml-auto">
             <button
               type="submit"
-              className="rounded-lg px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              className="rounded-lg px-2 py-1.5 text-sm whitespace-nowrap text-white/80 transition-colors hover:bg-white/10 hover:text-white sm:px-3"
             >
               Cerrar sesión
             </button>

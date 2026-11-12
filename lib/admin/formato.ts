@@ -107,3 +107,38 @@ export const ETIQUETA_MOTIVO: Record<string, string> = {
 export function etiquetaMotivo(motivo: string): string {
   return ETIQUETA_MOTIVO[motivo] ?? motivo.replace(/_/g, " ");
 }
+
+/** Una línea legible con el resultado de una herramienta que usó el bot. */
+export function resumenHerramienta(h: { nombre: string; entrada: unknown; resultado: unknown; error: boolean }): string {
+  const entrada = (h.entrada ?? {}) as Record<string, unknown>;
+  const resultado = typeof h.resultado === "string" ? h.resultado : JSON.stringify(h.resultado);
+  if (h.error) return resultado;
+
+  switch (h.nombre) {
+    case "verificar_acceso_vocabulario": {
+      try {
+        const r = JSON.parse(resultado) as {
+          autorizado?: boolean;
+          profesiones_elegidas?: { profesion: string; estado: string }[];
+        };
+        if (!r.autorizado) return "correo no autorizado";
+        const profesiones = r.profesiones_elegidas ?? [];
+        if (profesiones.length === 0) return "autorizado, todavía no eligió profesión";
+        const lista = profesiones
+          .map((p) => `${p.profesion} (${p.estado === "lista" ? "lista" : "en preparación"})`)
+          .join(", ");
+        return `autorizado · ${lista}`;
+      } catch {
+        return resultado;
+      }
+    }
+    case "escalar_a_humano":
+      return etiquetaMotivo(String(entrada.motivo ?? ""));
+    case "guardar_dato_contacto":
+      return `${String(entrada.clave ?? "")} = ${String(entrada.valor ?? "")}`;
+    case "cerrar_caso":
+      return String(entrada.resumen ?? "caso cerrado");
+    default:
+      return resultado;
+  }
+}

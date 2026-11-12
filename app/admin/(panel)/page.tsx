@@ -22,15 +22,15 @@ import {
   numeroCompacto,
   porcentaje,
 } from "@/lib/admin/formato";
-import { exigirSesionPanel } from "@/lib/admin/sesion";
+import { exigirSesionPanel, incluirPruebas } from "@/lib/admin/sesion";
 import { revisarEnv } from "@/lib/env";
 import { GraficaDiaria } from "./grafica-diaria";
-import { Aviso, Cargando, Cifra, Opcion, SinDatos, Tarjeta, conParametros, parametro } from "./ui";
+import { Aviso, Cargando, Cifra, EncabezadoPagina, Opcion, SinDatos, Tarjeta, parametro } from "./ui";
 
 export default function PaginaResumen(props: PageProps<"/admin">) {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Resumen</h1>
+      <EncabezadoPagina titulo="Resumen" />
       <Suspense fallback={<Cargando />}>
         <Contenido searchParams={props.searchParams} />
       </Suspense>
@@ -42,12 +42,7 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin">["
   await exigirSesionPanel();
   const sp = await searchParams;
   const dias: RangoDias = RANGOS_DIAS.find((r) => String(r) === parametro(sp.dias)) ?? 7;
-  const pruebas = parametro(sp.pruebas) === "1";
-  const enlace = (cambios: { dias?: RangoDias; pruebas?: boolean }) =>
-    conParametros("/admin", {
-      dias: (cambios.dias ?? dias) === 7 ? null : (cambios.dias ?? dias),
-      pruebas: cambios.pruebas ?? pruebas,
-    });
+  const pruebas = await incluirPruebas();
 
   const bd = await estadoBaseDatos();
   if (!bd.ok) {
@@ -90,14 +85,10 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin">["
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
         {RANGOS_DIAS.map((rango) => (
-          <Opcion key={rango} href={enlace({ dias: rango })} activa={rango === dias}>
+          <Opcion key={rango} href={rango === 7 ? "/admin" : `/admin?dias=${rango}`} activa={rango === dias}>
             Últimos {rango} días
           </Opcion>
         ))}
-        <span className="mx-1 hidden h-5 w-px bg-linea sm:block" aria-hidden />
-        <Opcion href={enlace({ pruebas: !pruebas })} activa={pruebas}>
-          {pruebas ? "✓ Incluye pruebas" : "Incluir pruebas"}
-        </Opcion>
       </div>
 
       {/* Estado del bot */}

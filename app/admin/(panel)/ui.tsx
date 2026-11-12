@@ -1,8 +1,34 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { cambiarIncluirPruebas } from "@/app/admin/acciones";
 import { ETIQUETA_ESTADO } from "@/lib/admin/formato";
+import { incluirPruebas } from "@/lib/admin/sesion";
+import { BotonInterruptor, Interruptor } from "./boton-interruptor";
 
 /** Componentes visuales compartidos por las páginas del panel (Server Components). */
+
+/** Título de la página con el interruptor "Incluir pruebas" (aplica a todo el panel). */
+export function EncabezadoPagina({ titulo, conInterruptor = true }: { titulo: string; conInterruptor?: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {conInterruptor && (
+        <Suspense fallback={<Interruptor activo={false} texto="Incluir pruebas" deshabilitado />}>
+          <InterruptorPruebas />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+async function InterruptorPruebas() {
+  const activo = await incluirPruebas();
+  return (
+    <form action={cambiarIncluirPruebas.bind(null, !activo)}>
+      <BotonInterruptor activo={activo} texto="Incluir pruebas" />
+    </form>
+  );
+}
 
 type Parametro = string | number | boolean | null | undefined;
 

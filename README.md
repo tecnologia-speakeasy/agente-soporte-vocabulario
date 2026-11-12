@@ -22,7 +22,7 @@ WhatsApp → GHL (flujo "BOT VOCABULARIO") → POST /api/webhook/ghl → 200 inm
 6. **Debounce**: espera `DEBOUNCE_SECONDS`. Si en ese tiempo llega otro mensaje del mismo contacto, este termina y responde el más reciente. Así, varios mensajes seguidos reciben una sola respuesta.
 7. **Claude**: recibe el system prompt, la base de conocimiento activa, el catálogo de vocabularios, la memoria del contacto y los últimos `HISTORY_LIMIT` mensajes de la sesión. Puede usar cuatro herramientas:
    - `verificar_acceso_vocabulario`: con el correo de compra, revisa si está autorizado y qué profesión eligió (ver [Datos del programa](#datos-del-programa-esquema-vocabulario)).
-   - `escalar_a_humano`: envía un mensaje de transición, agrega la etiqueta `requiere_humano`, actualiza el campo `motivo_escalado`, crea una nota con el resumen y marca la sesión como `escalada`. Desde ahí el bot deja de responder.
+   - `escalar_a_humano`: envía un mensaje tranquilizador ("ya estamos revisando tu caso", sin mencionar el cambio de bot a persona), agrega la etiqueta `requiere_humano`, actualiza el campo `motivo_escalado`, crea una nota con el resumen y marca la sesión como `escalada`. Desde ahí el bot deja de responder.
    - `guardar_dato_contacto`: guarda datos del caso en `contactos.memoria` (profesión, problema...).
    - `cerrar_caso`: marca la sesión como `cerrada` y el bot queda inactivo hasta un nuevo disparador.
 8. **Errores**: se registran en `webhook_logs` y en los logs de Vercel. El usuario nunca recibe mensajes de error técnicos. Si Claude rechaza responder o no termina en 6 pasos, el caso se escala automáticamente.
@@ -36,8 +36,9 @@ Panel web protegido con contraseña (`PANEL_PASSWORD`, o `ADMIN_TOKEN` si no est
 - **Conversaciones**: búsqueda por nombre, teléfono o correo guardado; filtros por estado, revisión, conversaciones largas (6+ mensajes del usuario) y con errores. Al abrir una se ve el chat completo con lo que hizo el bot en cada respuesta (herramientas con su entrada y resultado, costo, tiempo, errores y avisos), los datos que guardó del contacto y el resumen de cierre o escalado.
 - **Revisión manual**: en cada conversación se puede marcar "respondió bien" o "respondió mal" con una nota. El resumen muestra cuántas van bien, mal y sin revisar: es la forma de medir la calidad de las respuestas.
 - **Errores**: errores al procesar un mensaje (el usuario no recibió respuesta), procesos que no terminaron (p. ej. la función llegó a su tiempo límite) y avisos (p. ej. falló poner la etiqueta `requiere_humano` en GHL al escalar), con enlace a la conversación.
+- **Probar el bot**: un chat para hablar con el bot como si fueras un estudiante. Cada mensaje recorre el mismo flujo que uno de WhatsApp (disparadores, Claude, herramientas y base de datos reales, incluida la verificación de correos), pero **no envía nada por WhatsApp ni toca GHL**: la etiqueta, el campo y la nota del escalado solo se simulan y se muestran en el chat. Debajo de cada respuesta se ven las herramientas que usó, el tiempo y el costo. Usa contactos propios (`panel-…`), así que nunca toca un contacto real; "Nuevo chat" empieza con otro contacto.
 
-Las conversaciones de `/api/test-chat` se marcan como prueba y no se cuentan, salvo con el filtro "Incluir pruebas". El costo es una estimación con la tabla de precios de [lib/precios.ts](lib/precios.ts) (actualízala si cambias de modelo o cambian los precios); la factura real está en la consola de Anthropic. Las fechas se muestran en hora de Colombia (`PANEL_ZONA_HORARIA` para cambiarla).
+Las conversaciones del chat de prueba y de `/api/test-chat` se marcan como prueba y no se cuentan, salvo con el interruptor **"Incluir pruebas"** (junto al título de cada página): queda activo en todo el panel hasta que se apague. El costo es una estimación con la tabla de precios de [lib/precios.ts](lib/precios.ts) (actualízala si cambias de modelo o cambian los precios); la factura real está en la consola de Anthropic. Las fechas se muestran en hora de Colombia (`PANEL_ZONA_HORARIA` para cambiarla).
 
 La sesión del panel es una cookie firmada que dura 7 días; cambiar la contraseña cierra todas las sesiones.
 
@@ -110,6 +111,8 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:3000/api/health
 Devuelve el estado de la base de datos, las migraciones aplicadas, si se puede leer el esquema `vocabulario` (con conteos) y los problemas de configuración.
 
 ### Simular una conversación con `/api/test-chat`
+
+> Lo más cómodo es la pestaña **Probar el bot** del panel (`/admin/probar`). Este endpoint es para automatizar pruebas o probar casos que el chat no cubre (etiquetas simuladas, idempotencia, debounce).
 
 Ejecuta **el mismo flujo** que el webhook, pero **sin llamar a GHL**. Devuelve la respuesta, las herramientas usadas, lo que se habría hecho en GHL y el motivo si el mensaje se ignoró. Sí usa la base de datos real y llama a Claude de verdad, así que usa ids de contacto de prueba (por ejemplo `test-1`).
 
@@ -244,8 +247,8 @@ app/api/webhook/ghl/route.ts   Webhook de GHL (200 inmediato + waitUntil)
 app/api/test-chat/route.ts     Simulador sin GHL (admin)
 app/api/health/route.ts        Estado de BD y configuración (admin)
 app/admin/login/               Login del panel
-app/admin/acciones.ts          Server Actions: login, cerrar sesión, revisión de conversaciones
-app/admin/(panel)/             Panel: resumen, conversaciones (lista y detalle) y errores
+app/admin/acciones.ts          Server Actions: login, cerrar sesión, revisión, "Incluir pruebas"
+app/admin/(panel)/             Panel: resumen, conversaciones (lista y detalle), errores y chat de prueba
 proxy.ts                       Redirige al login si no hay sesión del panel
 lib/admin/                     Sesión (cookie firmada), consultas y formatos del panel
 lib/precios.ts                 Precios de Claude para estimar el costo
@@ -257,6 +260,7 @@ lib/ghl.ts                     Cliente de la API de GHL (+ versión simulada)
 lib/claude.ts                  Cliente de Anthropic
 lib/prompts/system.ts          System prompt y mensaje de transición
 lib/bot/handler.ts             Flujo completo y ciclo de herramientas
+lib/bot/prueba.ts              Simulador sin GHL (lo usan /api/test-chat y el chat del panel)
 lib/bot/activation.ts          Normalización, disparadores y sesiones
 lib/bot/tools.ts               Herramientas del agente
 lib/bot/context.ts             Contexto para Claude

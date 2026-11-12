@@ -33,3 +33,28 @@ export async function abrirSesionPanel(contrasena: string): Promise<void> {
 export async function cerrarSesionPanel(): Promise<void> {
   (await cookies()).set(COOKIE_PANEL, "", { path: "/admin", maxAge: 0 });
 }
+
+/**
+ * Preferencia "Incluir pruebas": se guarda en una cookie para que aplique en todo el panel
+ * (resumen, conversaciones y errores) hasta que se desactive.
+ */
+const COOKIE_PRUEBAS = "panel_pruebas";
+
+export async function incluirPruebas(): Promise<boolean> {
+  return (await cookies()).get(COOKIE_PRUEBAS)?.value === "1";
+}
+
+export async function guardarIncluirPruebas(incluir: boolean): Promise<void> {
+  const almacen = await cookies();
+  if (!incluir) {
+    almacen.set(COOKIE_PRUEBAS, "", { path: "/admin", maxAge: 0 });
+    return;
+  }
+  almacen.set(COOKIE_PRUEBAS, "1", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/admin",
+    maxAge: 365 * 24 * 60 * 60,
+  });
+}

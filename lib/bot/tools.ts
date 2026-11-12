@@ -17,10 +17,11 @@ export const HERRAMIENTAS: HerramientaClaude[] = [
   {
     name: "escalar_a_humano",
     description:
-      "Pasa la conversación a una persona del equipo de Speak Easy. Úsala cuando el usuario pida una persona, " +
+      "Pasa la conversación al equipo de Speak Easy. Úsala cuando el usuario pida una persona, " +
       "muestre molestia o repita un problema sin solución, el tema sea de pagos/reembolsos/cobros/tarjetas, " +
       "el caso requiera revisar su cuenta manualmente o la pregunta no esté en la base de conocimiento. " +
-      "El sistema envía al usuario el mensaje de transición: no escribas uno tú. Después de escalar, el bot deja de responder.",
+      "El sistema le envía al usuario un mensaje tranquilizador confirmando que ya se está revisando su caso: " +
+      "no escribas uno tú ni anuncies que lo atenderá otra persona. Después de escalar, el bot deja de responder.",
     strict: true,
     input_schema: {
       type: "object",

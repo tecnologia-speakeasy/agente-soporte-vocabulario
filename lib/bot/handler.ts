@@ -101,6 +101,10 @@ export interface ResultadoProceso {
   /** Todo lo que se envió (o se habría enviado) al usuario. */
   mensajesEnviados: string[];
   herramientas: UsoHerramienta[];
+  /** Consumo del turno (null si no se llegó a llamar a Claude). */
+  consumo: { costoUsd: number | null; duracionMs: number; llamadas: number; modelo: string | null } | null;
+  /** Problemas que no detuvieron el turno (p. ej. un paso de GHL que falló al escalar). */
+  avisos: string[];
 }
 
 const esperar = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -193,8 +197,10 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
     respuesta: null,
     mensajesEnviados: [],
     herramientas: [],
+    consumo: null,
+    avisos: [],
   };
-  const fin = (resultado: Resultado, detalle: string | null = null): ResultadoProceso => {
+  const fin =(resultado: Resultado, detalle: string | null = null): ResultadoProceso => {
     salida.resultado = resultado;
     salida.detalle = detalle;
     return salida;
@@ -254,7 +260,7 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
     motivoFieldId: env.GHL_MOTIVO_ESCALADO_FIELD_ID,
     mensajesEnviados: salida.mensajesEnviados,
     estado: { escalado: false, cerrado: false },
-    avisos: [],
+    avisos: salida.avisos,
   };
   const medicion = nuevaMedicion();
 
@@ -297,6 +303,11 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
     errorTurno = error;
     throw error;
   } finally {
+    const duracionMs = performance.now() - inicio;
+    const costoUsd = medicion.costoCompleto ? medicion.costoUsd : null;
+    if (medicion.llamadas > 0) {
+      salida.consumo = { costoUsd, duracionMs, llamadas: medicion.llamadas, modelo: medicion.modelo };
+    }
     if (medicion.llamadas > 0 || errorTurno !== null || ctx.avisos.length > 0) {
       await registrarTurno({
         contactId,
@@ -313,8 +324,8 @@ export async function procesarMensaje(datos: DatosEntrantes, opciones: OpcionesP
         tokensCacheLectura: medicion.tokensCacheLectura,
         tokensCacheEscritura: medicion.tokensCacheEscritura,
         tokensSalida: medicion.tokensSalida,
-        costoUsd: medicion.costoCompleto ? medicion.costoUsd : null,
-        duracionMs: performance.now() - inicio,
+        costoUsd,
+        duracionMs,
         herramientas: salida.herramientas,
         avisos: ctx.avisos,
         iniciadoEn,

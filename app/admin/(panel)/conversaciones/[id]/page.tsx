@@ -2,13 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 import { guardarRevision } from "@/app/admin/acciones";
-import {
-  detalleConversacion,
-  zonaHoraria,
-  type DetalleConversacion,
-  type HerramientaTurno,
-  type Turno,
-} from "@/lib/admin/datos";
+import { detalleConversacion, zonaHoraria, type DetalleConversacion, type Turno } from "@/lib/admin/datos";
 import {
   NOMBRE_HERRAMIENTA,
   dolares,
@@ -18,6 +12,7 @@ import {
   fechaHoraCompleta,
   hora,
   numero,
+  resumenHerramienta,
 } from "@/lib/admin/formato";
 import { exigirSesionPanel } from "@/lib/admin/sesion";
 import { Cargando, InsigniaEstado, InsigniaPrueba, InsigniaRevision, Tarjeta } from "../../ui";
@@ -333,39 +328,4 @@ function TarjetaTurno({ turno }: { turno: Turno }) {
       )}
     </div>
   );
-}
-
-/** Una línea legible con el resultado de cada herramienta. */
-function resumenHerramienta(h: HerramientaTurno): string {
-  const entrada = (h.entrada ?? {}) as Record<string, unknown>;
-  const resultado = typeof h.resultado === "string" ? h.resultado : JSON.stringify(h.resultado);
-  if (h.error) return resultado;
-
-  switch (h.nombre) {
-    case "verificar_acceso_vocabulario": {
-      try {
-        const r = JSON.parse(resultado) as {
-          autorizado?: boolean;
-          profesiones_elegidas?: { profesion: string; estado: string }[];
-        };
-        if (!r.autorizado) return "correo no autorizado";
-        const profesiones = r.profesiones_elegidas ?? [];
-        if (profesiones.length === 0) return "autorizado, todavía no eligió profesión";
-        const lista = profesiones
-          .map((p) => `${p.profesion} (${p.estado === "lista" ? "lista" : "en preparación"})`)
-          .join(", ");
-        return `autorizado · ${lista}`;
-      } catch {
-        return resultado;
-      }
-    }
-    case "escalar_a_humano":
-      return etiquetaMotivo(String(entrada.motivo ?? ""));
-    case "guardar_dato_contacto":
-      return `${String(entrada.clave ?? "")} = ${String(entrada.valor ?? "")}`;
-    case "cerrar_caso":
-      return String(entrada.resumen ?? "caso cerrado");
-    default:
-      return resultado;
-  }
 }

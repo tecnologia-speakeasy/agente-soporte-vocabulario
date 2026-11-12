@@ -9,9 +9,10 @@ import {
   type FiltroRevision,
 } from "@/lib/admin/datos";
 import { ETIQUETA_ESTADO, dolares, etiquetaMotivo, fechaHora, numero } from "@/lib/admin/formato";
-import { exigirSesionPanel } from "@/lib/admin/sesion";
+import { exigirSesionPanel, incluirPruebas } from "@/lib/admin/sesion";
 import {
   Cargando,
+  EncabezadoPagina,
   InsigniaEstado,
   InsigniaPrueba,
   InsigniaRevision,
@@ -32,7 +33,7 @@ const REVISIONES: { valor: FiltroRevision; texto: string }[] = [
 export default function PaginaConversaciones(props: PageProps<"/admin/conversaciones">) {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Conversaciones</h1>
+      <EncabezadoPagina titulo="Conversaciones" />
       <Suspense fallback={<Cargando filas={1} />}>
         <Contenido searchParams={props.searchParams} />
       </Suspense>
@@ -49,14 +50,14 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/con
   const revision = REVISIONES.find((r) => r.valor === revisionTexto)?.valor ?? null;
   const largas = parametro(sp.largas) === "1";
   const conProblemas = parametro(sp.problemas) === "1";
-  const pruebas = parametro(sp.pruebas) === "1";
+  const pruebas = await incluirPruebas();
   const busqueda = parametro(sp.q)?.trim().slice(0, 100) || null;
   const pagina = Math.max(1, Math.floor(Number(parametro(sp.pagina)) || 1));
 
   const { filas, total } = await conversaciones({ pruebas, estado, revision, largas, conProblemas, busqueda, pagina });
   const zona = zonaHoraria();
-  const filtrosActuales = { estado, revision, largas, problemas: conProblemas, pruebas, q: busqueda };
-  const hayFiltros = Boolean(estado || revision || largas || conProblemas || pruebas || busqueda);
+  const filtrosActuales = { estado, revision, largas, problemas: conProblemas, q: busqueda };
+  const hayFiltros = Boolean(estado || revision || largas || conProblemas || busqueda);
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,10 +121,6 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/con
             <input type="checkbox" name="problemas" value="1" defaultChecked={conProblemas} />
             Con errores
           </label>
-          <label className="flex items-center gap-2 py-2">
-            <input type="checkbox" name="pruebas" value="1" defaultChecked={pruebas} />
-            Incluir pruebas
-          </label>
         </fieldset>
         <div className="flex gap-2">
           <button type="submit" className="rounded-lg bg-morado px-4 py-2 text-sm font-semibold text-white hover:bg-morado-hover">
@@ -142,7 +139,11 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/con
         descripcion="Las conversaciones largas o con errores son buenas candidatas para revisar si el bot respondió bien."
       >
         {filas.length === 0 ? (
-          <SinDatos>{hayFiltros ? "Ninguna conversación coincide con los filtros." : "Todavía no hay conversaciones."}</SinDatos>
+          <SinDatos>{hayFiltros
+              ? "Ninguna conversación coincide con los filtros."
+              : pruebas
+                ? "Todavía no hay conversaciones."
+                : "Todavía no hay conversaciones reales. Las de prueba se ven con «Incluir pruebas»."}</SinDatos>
         ) : (
           <div className="-mx-5 overflow-x-auto">
             <table className="w-full min-w-[56rem] text-left text-sm">
@@ -156,7 +157,7 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/con
                   </th>
                   <th className="pb-2 pl-4 font-semibold">Motivo de escalado</th>
                   <th className="pb-2 text-right font-semibold">Errores</th>
-                  <th className="pb-2 text-right font-semibold">Costo</th>
+                  <th className="pb-2 pl-6 text-right font-semibold">Costo</th>
                   <th className="px-5 pb-2 font-semibold">Revisión</th>
                 </tr>
               </thead>
@@ -191,7 +192,7 @@ async function Contenido({ searchParams }: { searchParams: PageProps<"/admin/con
                     <td className="py-2.5 text-right tabular">
                       {f.problemas > 0 ? <span className="font-semibold text-critico">{f.problemas}</span> : <span className="text-tinta-3">0</span>}
                     </td>
-                    <td className="py-2.5 text-right text-tinta-2 tabular">{dolares(f.costo)}</td>
+                    <td className="py-2.5 pl-6 text-right text-tinta-2 tabular">{dolares(f.costo)}</td>
                     <td className="px-5 py-2.5">
                       <InsigniaRevision revision={f.revision} />
                     </td>

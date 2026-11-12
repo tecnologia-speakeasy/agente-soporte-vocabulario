@@ -1,9 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { exigirAdmin } from "@/lib/auth";
-import { crearClienteGhlSimulado } from "@/lib/ghl";
-import { procesarMensaje } from "@/lib/bot/handler";
-import { cerrarWebhookLog, registrarWebhook } from "@/lib/bot/repo";
+import { fueIgnorado, probarMensaje } from "@/lib/bot/prueba";
 
 export const maxDuration = 60;
 
@@ -48,25 +45,19 @@ export async function POST(request: Request) {
     );
   }
   const cuerpo = parseado.data;
-  const ghl = crearClienteGhlSimulado();
 
-  let logId: number | null = null;
   try {
-    logId = await registrarWebhook({ _origen: "test-chat", ...cuerpo }, true);
-    const r = await procesarMensaje(
-      {
-        contactId: cuerpo.contact_id,
-        texto: cuerpo.message,
-        messageId: cuerpo.message_id ?? `test:${randomUUID()}`,
-        nombre: cuerpo.nombre ?? null,
-        telefono: cuerpo.telefono ?? null,
-        tags: null,
-      },
-      { ghl, debounce: cuerpo.debounce, modoPrueba: true, tagsSimuladas: cuerpo.simulate_tags ?? null, logId },
-    );
-    await cerrarWebhookLog(logId, r.resultado, r.detalle, cuerpo.contact_id);
-
-    const ignorado = r.resultado.startsWith("ignorado") || r.resultado === "duplicado" || r.resultado === "debounce";
+    const r = await probarMensaje({
+      origen: "test-chat",
+      contactId: cuerpo.contact_id,
+      texto: cuerpo.message,
+      nombre: cuerpo.nombre,
+      telefono: cuerpo.telefono,
+      messageId: cuerpo.message_id,
+      debounce: cuerpo.debounce,
+      tags: cuerpo.simulate_tags,
+    });
+    const ignorado = fueIgnorado(r.resultado);
     return Response.json({
       ok: true,
       resultado: r.resultado,
@@ -75,13 +66,12 @@ export async function POST(request: Request) {
       respuesta: r.respuesta,
       mensajes_enviados: r.mensajesEnviados,
       herramientas: r.herramientas,
-      acciones_ghl_simuladas: ghl.acciones,
+      acciones_ghl_simuladas: r.accionesGhl,
       sesion_id: r.sesionId,
     });
   } catch (error) {
     const detalle = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error("[test-chat] Error:", error);
-    if (logId !== null) await cerrarWebhookLog(logId, "error", detalle, cuerpo.contact_id).catch(() => {});
     return Response.json({ ok: false, resultado: "error", error: detalle }, { status: 500 });
   }
 }
